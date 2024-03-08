@@ -16,6 +16,7 @@ import time
 from datasets import load_dataset, load_from_disk
 import argparse
 import multiprocessing
+import re
 
 from metrics.testing_util import run_test
 
@@ -134,6 +135,7 @@ def gen_code(task_id, sample, n_solutions, n_valid_solutions):
 
     output_file = f'generated_code/all/{task_id}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
     outputs = []
+    cleaned_solutions = []
 
     prompt = get_solving_code_prompt(sample)
     valid_solutions = 0
@@ -162,14 +164,24 @@ def gen_code(task_id, sample, n_solutions, n_valid_solutions):
         # print(clean_code)
         print(result)
         if np.any(result_np > 0):
-            output = {'task_id': task_id, 'solution_id': str(uuid.uuid4()), 'solution': clean_code, 'result': result, 'n_test_pass': int(np.sum(result_np > 0))}
-            outputs.append(output)
-            valid_solutions += 1
+            is_valid = True
+            cleaned_solution = re.sub(r"[\n\t\s]*", "", clean_code)
+            for valid_solution in cleaned_solutions:
+                if cleaned_solution == valid_solution:
+                    print(f"Task {task_id}: solution duplicated")
+                    is_valid = False
+                    break
 
-            print(f'Task {task_id}, found {valid_solutions}')
+            if is_valid:
+                cleaned_solutions.append(cleaned_solution)
+                output = {'task_id': task_id, 'solution_id': str(uuid.uuid4()), 'solution': clean_code, 'result': result, 'n_test_pass': int(np.sum(result_np > 0))}
+                outputs.append(output)
+                valid_solutions += 1
 
-            if valid_solutions == n_valid_solutions:
-                break
+                print(f'Task {task_id}, found {valid_solutions}')
+
+                if valid_solutions == n_valid_solutions:
+                    break
 
     if len(outputs) > 0:
         with open(output_file, 'w') as outfile:
