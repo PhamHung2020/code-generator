@@ -1,3 +1,4 @@
 dataset/**
 .idea/**
 generated_code/**
+**/__pycache__/**

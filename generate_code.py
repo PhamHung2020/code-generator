@@ -1,23 +1,17 @@
 # API_KEY = 'AIzaSyAYHi5jnVDlZsFCtM3Ocm9xjBHKrSBQ7RE' 'AIzaSyAL_ngwshh23YzKNcSXp3JgVZAaGpSwKz0'
-
-import pathlib
-import textwrap
-
+import os.path
 import google.api_core.exceptions
 import google.generativeai as genai
 
-from IPython.display import display
-from IPython.display import Markdown
 import json
 import datetime
 import numpy as np
 import uuid
 import time
-from datasets import load_dataset, load_from_disk
+from datasets import load_from_disk
 import argparse
 import multiprocessing
-
-from metrics.testing_util import run_test
+from code_executor import execute_code_in_batch, CodeExecutionResponse
 
 parser = argparse.ArgumentParser(description='Code Generation Parser')
 parser.add_argument('--api_key', dest='api_key', type=str, help='Gemini API key', default='AIzaSyAYHi5jnVDlZsFCtM3Ocm9xjBHKrSBQ7RE')
@@ -26,20 +20,9 @@ parser.add_argument('--n_samples_per_thread', dest='n_samples_per_thread', type=
 parser.add_argument('--n_threads', dest='n_threads', type=int, help='Number of threads', default=1)
 parser.add_argument('--max_solutions', dest='max_solutions', type=int, help='Maximum number of solutions per sample', default=20)
 parser.add_argument("--max_valid_solutions", dest='max_valid_solutions', type=int, help='Maximum number of valid solutions per sample', default=5)
-
-
-TIMEOUT = 10
-
-
-def to_markdown(text):
-    text = text.replace('•', '  *')
-    return Markdown(textwrap.indent(text, '> ', predicate=lambda _: True))
-
-
-def list_models():
-    for m in genai.list_models():
-        if 'generateContent' in m.supported_generation_methods:
-            print(m.name)
+parser.add_argument("--output_path", dest='output_path', type=str, help='Path to save output file', default="generated_code")
+parser.add_argument("--language", dest="language", type=str, help="Language", default='Python') # default language is Python
+parser.add_argument("--language_id", dest="language_id", type=int, help="Language ID", default=71) # default language is Python
 
 
 def get_solving_code_prompt(taco_sample, language='Python'):
@@ -71,7 +54,11 @@ def get_solving_code_prompt(taco_sample, language='Python'):
     else:
         prompt += "Use Call-Based format. "
 
-    prompt += "Only return code, don't comment in code, don't explain anything, don't include test case or example usage."
+    prompt += "ONLY return code, don't comment in code, don't explain anything, don't include test case or example usage, don't write unnecessary string to standard output."
+
+    if "Java" in language:
+        prompt += " Source code must contain 'Main' class and 'main' function."
+
     return prompt
 
 
@@ -79,65 +66,22 @@ def clean_gemini_code(code: str):
     return code[code.index('\n')+1:code.rindex('```')]
 
 
-def check_correctness(sample, generated_code, timeout, debug=True):
-    """Check correctness of code generation with a global timeout.
-    The global timeout is to catch some extreme/rare cases not handled by the timeouts
-    inside `run_test`"""
+def gen_code(task_id, sample, n_solutions, n_valid_solutions, output_path, language, language_id):
+    if (sample['starter_code'] and len(sample['starter_code']) > 0) or sample['picture_num']:
+        print("Sample is invalid: No input-output, Use starter code or picture in question, Input or Output is not a String or List")
+        return
 
-    def _temp_run(sample, generation, debug, result):
-        result.append(run_test(sample, test=generation, debug=debug))
-
-    manager = multiprocessing.Manager()
-    result = manager.list()
-    p = multiprocessing.Process(target=_temp_run, args=(sample, generated_code, debug, result))
-    p.start()
-    p.join(timeout=timeout + 1)
-    if p.is_alive():
-        p.kill()
-    if not result:
-        in_outs = json.loads(sample["input_output"])
-        # consider that all tests failed
-        result = [[-1 for i in range(len(in_outs["inputs"]))]]
-        if debug:
-            print(f"global timeout")
-    return result[0]
-
-
-def evaluate_generations(generated_code, sample, idx=None, debug=False):
-    curr_res = [-2]
-    try:
-        curr_res = check_correctness(sample, generated_code, timeout=TIMEOUT, debug=debug)
-        if debug:
-            print(f"\nSuccessful compilation of task {idx}!")
-        fixed = []
-        for e in curr_res:
-            if isinstance(e, np.ndarray):
-                e = e.item(0)
-            if isinstance(e, np.bool_):
-                e = bool(e)
-            fixed.append(e)
-        curr_res = fixed
-        if not np.all(curr_res):
-            if debug:
-                print(f"Results were not True for all test cases")
-    except Exception as e:
-        if debug:
-            print(f"Compilation failed, test framework exception = {repr(e)}{e}\n")
-    finally:
-        assert isinstance(curr_res, list)
-
-    return curr_res
-
-
-def gen_code(task_id, sample, n_solutions, n_valid_solutions):
     model = genai.GenerativeModel('gemini-pro')
 
-    output_file = f'generated_code/all/{task_id}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+    # output_file = os.path.join(output_path, f'{task_id}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.json')
+    output_file = f'{output_path}/{task_id}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+
     outputs = []
 
-    prompt = get_solving_code_prompt(sample)
+    prompt = get_solving_code_prompt(sample, language=language)
     valid_solutions = 0
-    for i in range(n_solutions):
+    while n_solutions > 0:
+    # for i in range(n_solutions):
         try:
             response = model.generate_content(prompt)
         except google.api_core.exceptions.InternalServerError:
@@ -150,19 +94,33 @@ def gen_code(task_id, sample, n_solutions, n_valid_solutions):
             continue
 
         try:
+            print(response.text)
             clean_code = clean_gemini_code(response.text)
         except Exception:
             print("Clean code failed")
             continue
 
-        result = evaluate_generations(clean_code, sample, task_id, debug=False)
-        result_np = np.array(result)
+        execution_result = execute_code_in_batch(clean_code, sample, language_id)
+        if execution_result.status.id != CodeExecutionResponse.ACCEPTED.id:
+            print("Failed to execute code: ", execution_result.status.description)
+            break
 
-        # print(prompt)
-        # print(clean_code)
-        print(result)
+        n_solutions -= 1
+        if not execution_result.results or len(execution_result.results) == 0:
+            continue
+
+        print(execution_result.results)
+        result_np = np.array(execution_result.results)
+
         if np.any(result_np > 0):
-            output = {'task_id': task_id, 'solution_id': str(uuid.uuid4()), 'solution': clean_code, 'result': result, 'n_test_pass': int(np.sum(result_np > 0))}
+            output = {
+                'task_id': task_id,
+                'solution_id': str(uuid.uuid4()),
+                'solution': clean_code,
+                'result': execution_result.results,
+                'n_test_pass': int(np.sum(result_np > 0))
+            }
+
             outputs.append(output)
             valid_solutions += 1
 
@@ -176,10 +134,10 @@ def gen_code(task_id, sample, n_solutions, n_valid_solutions):
             json.dump(outputs, outfile, indent=4)
 
 
-def main(dataset, start, end, max_solutions, max_valid_solutions):
+def main(dataset, start, end, max_solutions, max_valid_solutions, output_path, language, language_id):
     for i in range(start, end):
         print(f"Start sample {i}")
-        gen_code(i, dataset[i - start], max_solutions, max_valid_solutions)
+        gen_code(i, dataset[i - start], max_solutions, max_valid_solutions, output_path, language, language_id)
 
 
 if __name__ == "__main__":
@@ -187,6 +145,9 @@ if __name__ == "__main__":
     n_threads = args.n_threads
     base_start = args.start_sample
     n_sample_per_thread = args.n_samples_per_thread
+    output_path = args.output_path
+    language = args.language
+    language_id = args.language_id
 
     api_key = args.api_key
     genai.configure(api_key=api_key)
@@ -200,7 +161,7 @@ if __name__ == "__main__":
         threads.append(
             multiprocessing.Process(
                 target=main,
-                args=(thread_dataset, thread_start, thread_end, args.max_solutions, args.max_valid_solutions)
+                args=(thread_dataset, thread_start, thread_end, args.max_solutions, args.max_valid_solutions, output_path, language, language_id)
             )
         )
 
