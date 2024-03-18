@@ -6,3 +6,4 @@ pyext~=0.7
 requests~=2.31.0
 ipython~=8.18.1
 google-generativeai
+openai~=1.14.1
