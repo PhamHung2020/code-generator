@@ -1,4 +1,3 @@
-# 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
 import time
 
 from datasets import load_from_disk
@@ -15,7 +14,7 @@ import argparse
 from helpers import clean_gpt_code, get_gpt_prompt, evaluate_generations
 
 parser = argparse.ArgumentParser(description='Code Generation Parser')
-parser.add_argument('--api_key', dest='api_key', type=str, help='OpenAI API key', default='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')
+parser.add_argument('--api_key', dest='api_key', type=str, help='OpenAI API key')
 parser.add_argument('--start_sample', dest='start_sample', type=int, help='Index of first sample', default=0)
 parser.add_argument('--n_samples_per_thread', dest='n_samples_per_thread', type=int, help='Number of samples', default=10)
 parser.add_argument('--n_threads', dest='n_threads', type=int, help='Number of threads', default=1)
@@ -23,7 +22,7 @@ parser.add_argument('--max_solutions', dest='max_solutions', type=int, help='Max
 parser.add_argument("--max_valid_solutions", dest='max_valid_solutions', type=int, help='Maximum number of valid solutions per sample', default=1)
 
 
-API_KEY = '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'
+API_KEY = None
 MODEL = 'gpt-4-turbo-preview'
 TIMEOUT = 10
 TEMPERATURE = 0.7
@@ -59,7 +58,11 @@ def gen_code(task_id, sample, n_solutions, n_valid_solutions):
         except openai.BadRequestError as e:
             # Handle error 400
             print(f"Error 400: {e}")
-            continue
+            return
+        except openai.AuthenticationError as e:
+            # Handle error 401
+            print(f"Error 401: {e}")
+            return
         except openai.UnprocessableEntityError as e:
             # Handle error 422
             print(f"Error 422: {e}")
@@ -161,7 +164,7 @@ if __name__ == "__main__":
     base_start = args.start_sample
     n_sample_per_thread = args.n_samples_per_thread
 
-    # api_key = args.api_key
+    API_KEY = args.api_key
     threads = []
 
     taco = load_from_disk("dataset/train")
