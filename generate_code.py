@@ -82,9 +82,12 @@ def gen_code(task_id, sample, n_solutions, n_valid_solutions, output_path, langu
     model = genai.GenerativeModel('gemini-pro')
 
     # output_file = os.path.join(output_path, f'{task_id}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.json')
-    output_file = f'{output_path}/{task_id}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+    filename = f'{task_id}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+    output_file = f'{output_path}/{filename}'
+    not_passed_output_file = f'{output_path}/../not_passed_solutions/{filename}'
 
     outputs = []
+    not_passed_outputs = []
     accepted_solutions = []
 
     prompt = get_solving_code_prompt(sample, language=language)
@@ -149,10 +152,22 @@ def gen_code(task_id, sample, n_solutions, n_valid_solutions, output_path, langu
 
             if valid_solutions == n_valid_solutions:
                 break
+        else:
+            output = {
+                'task_id': task_id,
+                'solution_id': str(uuid.uuid4()),
+                'solution': clean_code,
+                'result': execution_result.results
+            }
+            not_passed_outputs.append(output)
 
     if len(outputs) > 0:
         with open(output_file, 'w') as outfile:
             json.dump(outputs, outfile, indent=4)
+
+    if len(not_passed_outputs) > 0:
+        with open(not_passed_output_file, "w") as outfile:
+            json.dump(not_passed_outputs, outfile, indent=4)
 
 
 def main(dataset, start, end, max_solutions, max_valid_solutions, output_path, language, language_id):
