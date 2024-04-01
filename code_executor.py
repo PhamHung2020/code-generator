@@ -62,7 +62,7 @@ def get_base64_decoded(text: str):
 
 def preprocessing(sample) -> tuple[CodeExecutionStatus, list, list]:
     # check starter code and picture num
-    if (sample['starter_code'] and len(sample['starter_code']) > 0) or sample['picture_num'] or not sample['input_output']:
+    if (sample['starter_code'] and len(sample['starter_code']) > 0) or not sample['input_output']:
         return CodeExecutionResponse.INVALID_SAMPLE, [], []
 
     # serialize input - output

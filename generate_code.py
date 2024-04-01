@@ -11,6 +11,7 @@ import time
 from datasets import load_from_disk
 import argparse
 import multiprocessing
+import re
 from code_executor import execute_code_in_batch, CodeExecutionResponse
 
 parser = argparse.ArgumentParser(description='Code Generation Parser')
@@ -23,6 +24,9 @@ parser.add_argument("--max_valid_solutions", dest='max_valid_solutions', type=in
 parser.add_argument("--output_path", dest='output_path', type=str, help='Path to save output file', default="generated_code")
 parser.add_argument("--language", dest="language", type=str, help="Language", default='Python') # default language is Python
 parser.add_argument("--language_id", dest="language_id", type=int, help="Language ID", default=71) # default language is Python
+
+
+FILTERED_PROBLEM_TASK_ID = []
 
 
 def get_solving_code_prompt(taco_sample, language='Python'):
@@ -54,7 +58,8 @@ def get_solving_code_prompt(taco_sample, language='Python'):
     else:
         prompt += "Use Call-Based format. "
 
-    prompt += "ONLY return code, don't comment in code, don't explain anything, don't include test case or example usage, don't write unnecessary string to standard output."
+    # prompt += "ONLY return code, don't comment in code, don't explain anything, don't include test case or example usage, don't write unnecessary string to standard output."
+    prompt += "ONLY return code, don't explain anything, don't include test case or example usage, don't write unnecessary string to standard output."
 
     if "Java" in language:
         prompt += " Source code must contain 'Main' class and 'main' function."
@@ -67,7 +72,10 @@ def clean_gemini_code(code: str):
 
 
 def gen_code(task_id, sample, n_solutions, n_valid_solutions, output_path, language, language_id):
-    if (sample['starter_code'] and len(sample['starter_code']) > 0) or sample['picture_num']:
+    if task_id not in FILTERED_PROBLEM_TASK_ID:
+        return
+
+    if sample['starter_code'] and len(sample['starter_code']) > 0:
         print("Sample is invalid: No input-output, Use starter code or picture in question, Input or Output is not a String or List")
         return
 
@@ -77,6 +85,7 @@ def gen_code(task_id, sample, n_solutions, n_valid_solutions, output_path, langu
     output_file = f'{output_path}/{task_id}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
 
     outputs = []
+    accepted_solutions = []
 
     prompt = get_solving_code_prompt(sample, language=language)
     valid_solutions = 0
@@ -94,10 +103,21 @@ def gen_code(task_id, sample, n_solutions, n_valid_solutions, output_path, langu
             continue
 
         try:
-            print(response.text)
+            # print(response.text)
             clean_code = clean_gemini_code(response.text)
         except Exception:
             print("Clean code failed")
+            continue
+
+        is_valid = True
+        cleaned_solution = re.sub(r"[\n\t\s]*", "", clean_code)
+        for accepted_solution in accepted_solutions:
+            if cleaned_solution == accepted_solution:
+                print(f"Task {task_id}: solution duplicated")
+                is_valid = False
+                break
+
+        if not is_valid:
             continue
 
         execution_result = execute_code_in_batch(clean_code, sample, language_id)
@@ -122,6 +142,7 @@ def gen_code(task_id, sample, n_solutions, n_valid_solutions, output_path, langu
             }
 
             outputs.append(output)
+            accepted_solutions.append(cleaned_solution)
             valid_solutions += 1
 
             print(f'Task {task_id}, found {valid_solutions}')
@@ -152,6 +173,12 @@ if __name__ == "__main__":
     api_key = args.api_key
     genai.configure(api_key=api_key)
     threads = []
+
+    with open("generated_code/taco_filtered/dataset_1.json", "r") as f:
+        filtered_problems = json.load(f)
+
+    FILTERED_PROBLEM_TASK_ID = [_['task_id'] for _ in filtered_problems]
+    print(len(FILTERED_PROBLEM_TASK_ID))
 
     taco = load_from_disk("dataset/train")
     for thread_idx in range(n_threads):
