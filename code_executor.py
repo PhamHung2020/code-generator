@@ -178,6 +178,7 @@ def execute_code_in_batch(generated_code: str, sample, language_id: int) -> Code
     execution_results = []
     n_loops = int(len(inputs) / n_in_out_per_loop) + 1
     count = 0
+    has_one_test_passed = False
 
     for i in range(n_loops):
         start_index = i * n_in_out_per_loop
@@ -243,6 +244,7 @@ def execute_code_in_batch(generated_code: str, sample, language_id: int) -> Code
                     break
                 if status_id == CodeExecutionResponse.ACCEPTED.id:
                     execution_results.append(True)
+                    has_one_test_passed = True
                 elif status_id == CodeExecutionResponse.COMPILATION_ERROR.id or status_id == CodeExecutionResponse.RUNTIME_ERROR_NZEC.id:
                     print("Compilation error/Runtime error NZEC")
                     if submission_result['compile_output']:
@@ -257,7 +259,13 @@ def execute_code_in_batch(generated_code: str, sample, language_id: int) -> Code
                 print(f"Test {count}: ", submission_result['status']['description'])
                 count += 1
 
+            if has_one_test_passed:
+                break
+
             time.sleep(2)
+
+        if has_one_test_passed:
+            break
 
     return CodeExecutionResult(CodeExecutionResponse.ACCEPTED, execution_results)
 
