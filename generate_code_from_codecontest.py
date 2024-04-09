@@ -29,7 +29,7 @@ parser.add_argument("--language_id", dest="language_id", type=int, help="Languag
 def get_solving_code_prompt(sample, language='Python'):
     prompt = f"""Solve the coding problem below in {language} programming language:
 
-[{sample['description']}]
+[{sample['question']}]
 
 
 """
@@ -102,11 +102,11 @@ def gen_code(task_id, sample, n_solutions, n_valid_solutions, output_path, langu
         if not is_valid:
             continue
 
-        test_inputs: list = sample["private_test"]["input"]
-        test_inputs.extend(sample["generated_test"]["input"])
+        test_inputs: list = sample["private_tests"]["input"]
+        test_inputs.extend(sample["generated_tests"]["input"])
 
-        test_outputs: list = sample["private_test"]["output"]
-        test_outputs.extend(sample["generated_test"]["output"])
+        test_outputs: list = sample["private_tests"]["output"]
+        test_outputs.extend(sample["generated_tests"]["output"])
 
         sample["input_output"] = json.dumps({
             "inputs": test_inputs,
@@ -182,7 +182,7 @@ if __name__ == "__main__":
     threads = []
 
     # Load dataset
-    with open("dataset/java_test_cleaned.json", "r") as f:
+    with open("dataset/java_train.json", "r") as f:
         problems = json.load(f)
 
     # Create threads
