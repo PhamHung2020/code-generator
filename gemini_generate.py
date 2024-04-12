@@ -1,4 +1,3 @@
-# API_KEY = 'AIzaSyAYHi5jnVDlZsFCtM3Ocm9xjBHKrSBQ7RE' 'AIzaSyAL_ngwshh23YzKNcSXp3JgVZAaGpSwKz0'
 
 import pathlib
 import textwrap
@@ -21,7 +20,7 @@ import re
 from metrics.testing_util import run_test
 
 parser = argparse.ArgumentParser(description='Code Generation Parser')
-parser.add_argument('--api_key', dest='api_key', type=str, help='Gemini API key', default='AIzaSyAYHi5jnVDlZsFCtM3Ocm9xjBHKrSBQ7RE')
+parser.add_argument('--api_key', dest='api_key', type=str, help='Gemini API key')
 parser.add_argument('--start_sample', dest='start_sample', type=int, help='Index of first sample', default=0)
 parser.add_argument('--n_samples_per_thread', dest='n_samples_per_thread', type=int, help='Number of samples', default=10)
 parser.add_argument('--n_threads', dest='n_threads', type=int, help='Number of threads', default=1)

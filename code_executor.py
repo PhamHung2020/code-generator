@@ -316,7 +316,7 @@ if __name__ == "__main__":
 
     taco = load_from_disk("dataset/train")
 
-    genai.configure(api_key="AIzaSyAL_ngwshh23YzKNcSXp3JgVZAaGpSwKz0")
+    genai.configure(api_key="")
     model = genai.GenerativeModel('gemini-pro')
 
     output_file = f'generated_code/test_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.json'

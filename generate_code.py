@@ -1,4 +1,3 @@
-# API_KEY = 'AIzaSyAYHi5jnVDlZsFCtM3Ocm9xjBHKrSBQ7RE' 'AIzaSyAL_ngwshh23YzKNcSXp3JgVZAaGpSwKz0'
 import os.path
 import google.api_core.exceptions
 import google.generativeai as genai
@@ -15,7 +14,7 @@ import re
 from code_executor import execute_code_in_batch, CodeExecutionResponse
 
 parser = argparse.ArgumentParser(description='Code Generation Parser')
-parser.add_argument('--api_key', dest='api_key', type=str, help='Gemini API key', default='AIzaSyAYHi5jnVDlZsFCtM3Ocm9xjBHKrSBQ7RE')
+parser.add_argument('--api_key', dest='api_key', type=str, help='Gemini API key')
 parser.add_argument('--start_sample', dest='start_sample', type=int, help='Index of first sample', default=0)
 parser.add_argument('--n_samples_per_thread', dest='n_samples_per_thread', type=int, help='Number of samples', default=10)
 parser.add_argument('--n_threads', dest='n_threads', type=int, help='Number of threads', default=1)
@@ -62,13 +61,25 @@ def get_solving_code_prompt(taco_sample, language='Python'):
     prompt += "ONLY return code, don't explain anything, don't include test case or example usage, don't write unnecessary string to standard output."
 
     if "Java" in language:
-        prompt += " Source code must contain 'Main' class and 'main' function."
+        prompt += " Source code must contain 'Main' class."
 
     return prompt
 
 
 def clean_gemini_code(code: str):
     return code[code.index('\n')+1:code.rindex('```')]
+
+
+def clean_java_code(code: str):
+    main_method_index = code.rindex("public static void main")
+
+    truncated_code = code[:main_method_index]
+    print(truncated_code)
+    truncated_code = truncated_code[(truncated_code.index("public class") + 13):]
+    truncated_code = truncated_code[:truncated_code.index(' ')]
+    print(truncated_code)
+
+    return code.replace(truncated_code, "Main")
 
 
 def gen_code(task_id, sample, n_solutions, n_valid_solutions, output_path, language, language_id):
