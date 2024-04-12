@@ -25,40 +25,15 @@ parser.add_argument("--language", dest="language", type=str, help="Language", de
 parser.add_argument("--language_id", dest="language_id", type=int, help="Language ID", default=71) # default language is Python
 
 
-FILTERED_PROBLEM_TASK_ID = []
-
-
-def get_solving_code_prompt(taco_sample, language='Python'):
+def get_solving_code_prompt(sample, language='Python'):
     prompt = f"""Solve the coding problem below in {language} programming language:
 
-[{taco_sample['question']}]
+[{sample['question']}]
 
 
 """
 
-    starter_code = None if len(taco_sample["starter_code"]) == 0 else taco_sample["starter_code"]
-    if starter_code:
-        prompt += f"""Use starter code below as template:
-
-[{starter_code}]
-
-"""
-
-    try:
-        input_output = json.loads(taco_sample["input_output"])
-        fn_name = (
-            None if not input_output.get("fn_name") else input_output["fn_name"]
-        )
-    except ValueError:
-        fn_name = None
-
-    if not fn_name and not starter_code:
-        prompt += "Use Standard Input format. "
-    else:
-        prompt += "Use Call-Based format. "
-
-    # prompt += "ONLY return code, don't comment in code, don't explain anything, don't include test case or example usage, don't write unnecessary string to standard output."
-    prompt += "ONLY return code, don't explain anything, don't include test case or example usage, don't write unnecessary string to standard output."
+    prompt += "Use Standard Input format. ONLY return code, don't explain anything, don't include test case or example usage, don't write unnecessary string to standard output."
 
     if "Java" in language:
         prompt += " Source code must contain 'Main' class."
@@ -83,16 +58,8 @@ def clean_java_code(code: str):
 
 
 def gen_code(task_id, sample, n_solutions, n_valid_solutions, output_path, language, language_id):
-    if task_id not in FILTERED_PROBLEM_TASK_ID:
-        return
-
-    if sample['starter_code'] and len(sample['starter_code']) > 0:
-        print("Sample is invalid: No input-output, Use starter code or picture in question, Input or Output is not a String or List")
-        return
-
     model = genai.GenerativeModel('gemini-pro')
 
-    # output_file = os.path.join(output_path, f'{task_id}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.json')
     filename = f'{task_id}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
     output_file = f'{output_path}/{filename}'
     not_passed_output_file = f'{output_path}/../not_passed_solutions/{filename}'
@@ -133,6 +100,18 @@ def gen_code(task_id, sample, n_solutions, n_valid_solutions, output_path, langu
 
         if not is_valid:
             continue
+
+        test_inputs: list = sample["private_tests"]["input"]
+        test_inputs.extend(sample["generated_tests"]["input"])
+
+        test_outputs: list = sample["private_tests"]["output"]
+        test_outputs.extend(sample["generated_tests"]["output"])
+
+        sample["input_output"] = json.dumps({
+            "inputs": test_inputs,
+            "outputs": test_outputs
+        })
+        sample["starter_code"] = ""
 
         execution_result = execute_code_in_batch(clean_code, sample, language_id)
         if execution_result.status.id != CodeExecutionResponse.ACCEPTED.id:
@@ -188,6 +167,7 @@ def main(dataset, start, end, max_solutions, max_valid_solutions, output_path, l
 
 
 if __name__ == "__main__":
+    # Prepare parameter
     args = parser.parse_args()
     n_threads = args.n_threads
     base_start = args.start_sample
@@ -200,17 +180,15 @@ if __name__ == "__main__":
     genai.configure(api_key=api_key)
     threads = []
 
-    with open("generated_code/taco_filtered/dataset_1.json", "r") as f:
-        filtered_problems = json.load(f)
+    # Load dataset
+    with open("dataset/java_train.json", "r") as f:
+        problems = json.load(f)
 
-    FILTERED_PROBLEM_TASK_ID = [_['task_id'] for _ in filtered_problems]
-    print(len(FILTERED_PROBLEM_TASK_ID))
-
-    taco = load_from_disk("dataset/train")
+    # Create threads
     for thread_idx in range(n_threads):
         thread_start = base_start + thread_idx * n_sample_per_thread
         thread_end = thread_start + n_sample_per_thread
-        thread_dataset = taco.select(range(thread_start, thread_end))
+        thread_dataset = problems[thread_start:thread_end]
         threads.append(
             multiprocessing.Process(
                 target=main,
@@ -218,10 +196,12 @@ if __name__ == "__main__":
             )
         )
 
+    # Start threads
     for thread_idx, thread in enumerate(threads):
         thread.start()
         print(f"Start thread {thread_idx}")
 
+    # Wait for all threads terminated
     for thread in threads:
         thread.join()
 

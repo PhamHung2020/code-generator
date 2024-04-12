@@ -61,8 +61,8 @@ def get_base64_decoded(text: str):
 
 
 def preprocessing(sample) -> tuple[CodeExecutionStatus, list, list]:
-    # check starter code and picture num
-    if (sample['starter_code'] and len(sample['starter_code']) > 0) or sample['picture_num'] or not sample['input_output']:
+    # check starter code
+    if (sample['starter_code'] and len(sample['starter_code']) > 0) or not sample['input_output']:
         return CodeExecutionResponse.INVALID_SAMPLE, [], []
 
     # serialize input - output
@@ -178,6 +178,7 @@ def execute_code_in_batch(generated_code: str, sample, language_id: int) -> Code
     execution_results = []
     n_loops = int(len(inputs) / n_in_out_per_loop) + 1
     count = 0
+    has_one_test_passed = False
 
     for i in range(n_loops):
         start_index = i * n_in_out_per_loop
@@ -243,6 +244,7 @@ def execute_code_in_batch(generated_code: str, sample, language_id: int) -> Code
                     break
                 if status_id == CodeExecutionResponse.ACCEPTED.id:
                     execution_results.append(True)
+                    has_one_test_passed = True
                 elif status_id == CodeExecutionResponse.COMPILATION_ERROR.id or status_id == CodeExecutionResponse.RUNTIME_ERROR_NZEC.id:
                     print("Compilation error/Runtime error NZEC")
                     if submission_result['compile_output']:
@@ -257,7 +259,13 @@ def execute_code_in_batch(generated_code: str, sample, language_id: int) -> Code
                 print(f"Test {count}: ", submission_result['status']['description'])
                 count += 1
 
+            if has_one_test_passed:
+                break
+
             time.sleep(2)
+
+        if has_one_test_passed:
+            break
 
     return CodeExecutionResult(CodeExecutionResponse.ACCEPTED, execution_results)
 
@@ -308,7 +316,7 @@ if __name__ == "__main__":
 
     taco = load_from_disk("dataset/train")
 
-    genai.configure(api_key="AIzaSyAL_ngwshh23YzKNcSXp3JgVZAaGpSwKz0")
+    genai.configure(api_key="")
     model = genai.GenerativeModel('gemini-pro')
 
     output_file = f'generated_code/test_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
