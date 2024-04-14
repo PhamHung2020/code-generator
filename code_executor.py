@@ -98,6 +98,9 @@ def preprocessing(sample) -> tuple[CodeExecutionStatus, list, list]:
     except requests.exceptions.ConnectionError:
         return CodeExecutionResponse.CONNECTION_ERROR, [], []
 
+    inputs = inputs[:300]
+    outputs = outputs[:300]
+
     return CodeExecutionResponse.ACCEPTED, inputs, outputs
 
 
