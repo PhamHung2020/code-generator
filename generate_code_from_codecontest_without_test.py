@@ -113,7 +113,7 @@ def gen_code(task_id, sample, n_solutions, n_valid_solutions, output_path, langu
 
         print(f'Task {task_id}, found {valid_solutions}')
 
-        if valid_solutions == n_valid_solutions:
+        if valid_solutions == n_solutions:
             break
 
     if len(outputs) > 0:
